@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knowledge Editing — EasyEdit + ROME</title>
+  <meta name="description" content="Demo chinh sua tri thuc trong mo hinh ngon ngu lon (GPT-2) bang ROME ma khong can huan luyen lai toan bo." />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="container">
+    <span class="badge">EasyEdit + ROME</span>
+    <h1 class="gradient-text">Knowledge Editing<br>in Large Language Models</h1>
+    <p>Chinh sua tri thuc trong mo hinh ngon ngu lon (GPT-2) ma khong can huan luyen lai toan bo -- su dung phuong phap ROME (Rank-One Model Editing).</p>
+    <div class="status-bar" id="statusBar">
+      <span><span class="status-dot amber" id="statusDot"></span> <span id="statusText">Dang kiem tra...</span></span>
+      <span>Edits: <strong id="editCount">0</strong></span>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <!-- STEP 1: BEFORE EDIT -->
+  <section class="card fade-in" id="step1" style="position:relative">
+    <div class="card-header">
+      <span class="step-num">1</span>
+      <h2>Before Edit -- Kiem tra tri thuc goc</h2>
+    </div>
+    <p class="card-desc">Nhap cau hoi de kiem tra xem GPT-2 goc dang luu tru tri thuc gi. Dieu nay chung minh LLM co the chua <strong>tri thuc loi thoi hoac sai</strong>.</p>
+
+    <div class="form-full">
+      <label for="genPrompt">Prompt</label>
+      <input type="text" id="genPrompt" placeholder="Vi du: Thủ đô của Việt Nam là" value="Thủ đô của Việt Nam là" />
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnGenerate" onclick="doGenerate()">
+        Generate
+      </button>
+    </div>
+
+    <div id="genResult" class="hidden">
+      <div class="result-label">Ket qua tu GPT-2</div>
+      <div class="result-box" id="genOutput"></div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 du doan token tiep theo</div>
+      <div class="prob-bar-container" id="genTopPreds"></div>
+    </div>
+
+    <div id="genLoading" class="loading-overlay hidden">
+      <span class="spinner"></span> Dang sinh van ban...
+    </div>
+  </section>
+
+  <!-- STEP 2: APPLY ROME -->
+  <section class="card fade-in" id="step2" style="position:relative">
+    <div class="card-header">
+      <span class="step-num">2</span>
+      <h2>Apply ROME -- Chinh sua tri thuc</h2>
+    </div>
+    <p class="card-desc">Nhap thong tin chinh sua. ROME se can thiep <strong>truc tiep vao trong so MLP</strong> cua mo hinh ma khong can retrain.</p>
+
+    <div class="form-row">
+      <div>
+        <label for="editPrompt">Prompt</label>
+        <input type="text" id="editPrompt" value="Thủ đô của Việt Nam là" />
+      </div>
+      <div>
+        <label for="editSubject">Subject</label>
+        <input type="text" id="editSubject" value="Việt Nam" />
+      </div>
+    </div>
+    <div class="form-row">
+      <div>
+        <label for="editGroundTruth">Ground Truth (fact cu)</label>
+        <input type="text" id="editGroundTruth" value=" Hà Nội" />
+      </div>
+      <div>
+        <label for="editTargetNew">Target New (fact moi)</label>
+        <input type="text" id="editTargetNew" value=" Hồ Chí Minh" />
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnEdit" onclick="doEdit()">
+        Apply ROME Edit
+      </button>
+      <button class="btn btn-danger" id="btnReset" onclick="doReset()">
+        Reset Model
+      </button>
+    </div>
+
+    <!-- Before / After comparison -->
+    <div id="editResult" class="hidden">
+      <div class="compare-grid">
+        <div>
+          <div class="result-label">BEFORE EDIT</div>
+          <div class="result-box" id="editBefore"></div>
+          <div class="result-label" style="margin-top:.5rem">Top-5 predictions (Before)</div>
+          <div class="prob-bar-container" id="topBefore"></div>
+          <div class="result-label" style="margin-top:.5rem">Target token probs (Before)</div>
+          <div class="prob-bar-container" id="probsBefore"></div>
+        </div>
+        <div>
+          <div class="result-label">AFTER EDIT</div>
+          <div class="result-box success" id="editAfter"></div>
+          <div class="result-label" style="margin-top:.5rem">Top-5 predictions (After)</div>
+          <div class="prob-bar-container" id="topAfter"></div>
+          <div class="result-label" style="margin-top:.5rem">Target token probs (After)</div>
+          <div class="prob-bar-container" id="probsAfter"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="editLoading" class="loading-overlay hidden">
+      <span class="spinner"></span> Dang ap dung ROME... (co the mat 15-30 giay)
+    </div>
+  </section>
+
+  <!-- STEP 3: VERIFY EDIT -->
+  <section class="card fade-in" id="step3" style="position:relative">
+    <div class="card-header">
+      <span class="step-num">3</span>
+      <h2>Verify Edit -- Hoi lai model da chinh sua</h2>
+    </div>
+    <p class="card-desc">Sau khi chinh sua, nhap <strong>bat ky prompt nao</strong> de kiem tra model da cap nhat tri thuc moi chua. Day la cach xac nhan model <strong>sinh ra fact moi dung theo yeu cau</strong>.</p>
+
+    <div class="form-full">
+      <label for="verifyPrompt">Prompt (hoi lai)</label>
+      <input type="text" id="verifyPrompt" value="Thủ đô của Việt Nam là" />
+    </div>
+    <div class="form-full">
+      <label for="verifyTarget">Target de do xac suat (tuy chon)</label>
+      <input type="text" id="verifyTarget" placeholder="Vi du:  Hồ Chí Minh" value=" Hồ Chí Minh" />
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="btnVerify" onclick="doVerify()">
+        Verify
+      </button>
+    </div>
+
+    <div id="verifyResult" class="hidden">
+      <div class="result-label">Ket qua tu model da chinh sua</div>
+      <div class="result-box success" id="verifyOutput"></div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 du doan token tiep theo</div>
+      <div class="prob-bar-container" id="verifyTopPreds"></div>
+      <div id="verifyProbSection" class="hidden">
+        <div class="result-label" style="margin-top:.7rem">Xac suat target tokens</div>
+        <div class="prob-bar-container" id="verifyProbs"></div>
+      </div>
+    </div>
+
+    <div id="verifyLoading" class="loading-overlay hidden">
+      <span class="spinner"></span> Dang kiem tra...
+    </div>
+  </section>
+
+  <!-- STEP 4: METRICS -->
+  <section class="card fade-in" id="step4">
+    <div class="card-header">
+      <span class="step-num">4</span>
+      <h2>Metrics -- Danh gia hieu qua</h2>
+    </div>
+    <p class="card-desc">Danh gia hieu qua chinh sua tri thuc bang cac <strong>metric chuan</strong>: Rewrite Accuracy, Token Probability.</p>
+
+    <div class="metrics-grid" id="metricsGrid">
+      <div class="metric-card">
+        <div class="metric-value" id="metricAccBefore">--</div>
+        <div class="metric-label">Rewrite Acc (Before)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricAccAfter">--</div>
+        <div class="metric-label">Rewrite Acc (After)</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-value" id="metricAvgProb">--</div>
+        <div class="metric-label">Avg Target Prob (After)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STEP 5: LOCALITY -->
+  <section class="card fade-in" id="step5" style="position:relative">
+    <div class="card-header">
+      <span class="step-num">5</span>
+      <h2>Locality -- Kiem tra tri thuc khong lien quan</h2>
+    </div>
+    <p class="card-desc">Kiem tra rang viec chinh sua <strong>khong lam pha hong</strong> tri thuc khong lien quan. Vi du: edit Messi -> Inter Miami, nhung Ronaldo van phai dung.</p>
+
+    <div class="form-row">
+      <div>
+        <label for="localPrompt">Prompt (khong lien quan)</label>
+        <input type="text" id="localPrompt" value="Tổng thống Hoa Kỳ là" />
+      </div>
+      <div>
+        <label for="localExpected">Expected Answer</label>
+        <input type="text" id="localExpected" value=" Joe Biden" />
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-secondary" id="btnLocality" onclick="doLocality()">
+        Test Locality
+      </button>
+    </div>
+
+    <div id="localResult" class="hidden">
+      <div class="result-label">Ket qua Locality</div>
+      <div class="result-box" id="localOutput"></div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 du doan</div>
+      <div class="prob-bar-container" id="localTopPreds"></div>
+      <div class="prob-bar-container" id="probsLocality"></div>
+    </div>
+
+    <div id="localLoading" class="loading-overlay hidden">
+      <span class="spinner"></span> Dang kiem tra locality...
+    </div>
+  </section>
+
+  <!-- STEP 6: HISTORY -->
+  <section class="card fade-in" id="step6">
+    <div class="card-header">
+      <span class="step-num">6</span>
+      <h2>Edit History -- Lich su chinh sua</h2>
+    </div>
+    <p class="card-desc">Bang lich su tat ca cac lan chinh sua tri thuc da thuc hien trong phien lam viec.</p>
+
+    <div id="historyContent">
+      <p style="color: var(--text-muted); font-size: .88rem;">Chua co lan chinh sua nao.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="container">
+    Knowledge Editing in LLMs -- EasyEdit + ROME -- GPT-2 -- 2026
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
