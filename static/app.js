@@ -74,35 +74,110 @@ async function checkStatus() {
     $("editCount").textContent = d.edit_count;
     if (d.loaded) {
       dot.className = "status-dot green";
-      txt.textContent = d.is_edited ? "Model da chinh sua" : "Model san sang";
+      let statusMsg = d.is_edited ? "Model đã chỉnh sửa" : "Model sẵn sàng";
+      if (d.checkpoint_saved) {
+        statusMsg += ` | 💾 Checkpoint: ${d.checkpoint_size_mb} MB`;
+      }
+      txt.textContent = statusMsg;
     } else {
       dot.className = "status-dot red";
-      txt.textContent = "Model chua tai";
+      txt.textContent = "Model chưa tải";
+    }
+    // Hiện/ẩn nút suggest dựa trên API sẵn có
+    const suggestBtn = $("btnSuggest");
+    if (suggestBtn) {
+      suggestBtn.title = d.gemini_ready
+        ? "Gợi ý câu trả lời bằng Gemini AI"
+        : "Cần đặt GEMINI_API_KEY trong file .env";
+      suggestBtn.disabled = !d.gemini_ready && !d.openai_ready;
     }
   } catch {
     $("statusDot").className = "status-dot red";
-    $("statusText").textContent = "Server khong phan hoi";
+    $("statusText").textContent = "Server không phản hồi";
   }
 }
+
+// -- AI Suggest target_new --
+async function doSuggest() {
+  const prompt  = $("editPrompt").value.trim();
+  const subject = $("editSubject").value.trim();
+  if (!prompt || !subject) {
+    return alert("Vui lòng nhập Prompt và Subject trước khi gợi ý.");
+  }
+  const question = `Trả lời ngắn gọn (tối đa 10 từ): ${prompt}`;
+  const btn = $("btnSuggest");
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang hỏi AI...";
+  try {
+    const d = await post("/api/suggest", { question, provider: "gemini" });
+    if (d.error) throw new Error(d.error);
+    $("editTargetNew").value = d.answer;
+    btn.textContent = "✅ Đã gợi ý!";
+    setTimeout(() => { btn.textContent = "🤖 Gợi ý từ AI"; }, 2000);
+  } catch (e) {
+    alert("Lỗi gợi ý: " + e.message);
+    btn.textContent = "🤖 Gợi ý từ AI";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// -- Explain / Tham khảo thực tế từ Gemini hoặc Tavily --
+// promptInputId: id của ô input chứa câu hỏi
+// answerElId:    id của phần từ hiển thị answer
+// sourceElId:    id của phần từ hiển thị source
+// btnId:         id của nút đã nhấn
+async function doExplain(promptInputId, answerElId, sourceElId, btnId) {
+  const question = $(promptInputId).value.trim();
+  if (!question) return alert("Vui lòng nhập prompt trước.");
+
+  const btn = $(btnId);
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang hỏi AI...";
+
+  // Xác định body id tương ứng
+  // btnId pattern: btnGenExplain -> genAiRefBody | btnVerifyExplain -> verifyAiRefBody
+  const prefix    = btnId.replace("btn","").replace("Explain","").toLowerCase(); // "gen" | "verify"
+  const bodyEl    = $(prefix + "AiRefBody");
+
+  try {
+    const d = await post("/api/explain", { question, provider: "auto" });
+    if (d.error) throw new Error(d.error);
+
+    $(sourceElId).textContent = d.source ? `🔗 Nguồn: ${d.source}` : "";
+    $(answerElId).textContent = d.answer || "(Không có kết quả)";
+    bodyEl.classList.remove("hidden");
+    btn.textContent = "🔄 Cập nhật";
+  } catch (e) {
+    $(sourceElId).textContent = "";
+    $(answerElId).textContent = "⚠️ Lỗi: " + e.message;
+    bodyEl.classList.remove("hidden");
+    btn.textContent = "🌐 Hỏi Gemini / Tavily";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 
 // -- Step 1: Generate --
 async function doGenerate() {
   const prompt = $("genPrompt").value.trim();
-  if (!prompt) return alert("Vui long nhap prompt.");
+  if (!prompt) return alert("Vui lòng nhập prompt.");
+  const max_new_tokens = parseInt($("genMaxTokens")?.value || "20");
 
   $("btnGenerate").disabled = true;
   show("genLoading");
   hide("genResult");
 
   try {
-    const d = await post("/api/generate", { prompt });
+    const d = await post("/api/generate", { prompt, max_new_tokens });
     if (d.error) throw new Error(d.error);
     $("genOutput").textContent = d.generated;
     $("genOutput").className = "result-box";
     renderTopPreds("genTopPreds", d.top_predictions);
     show("genResult");
   } catch (e) {
-    $("genOutput").textContent = "Loi: " + e.message;
+    $("genOutput").textContent = "Lỗi: " + e.message;
     $("genOutput").className = "result-box error";
     show("genResult");
   } finally {
@@ -219,7 +294,7 @@ async function doVerify() {
 
 // -- Reset model --
 async function doReset() {
-  if (!confirm("Reset mo hinh ve GPT-2 goc? Moi edit se bi mat.")) return;
+  if (!confirm("Reset model về gốc?\n⚠️ Tất cả edit và checkpoint sẽ bị XOÁ.")) return;
 
   $("btnReset").disabled = true;
   try {

@@ -11,8 +11,10 @@ __pycache__/
 data/stats/
 *.bin
 *.safetensors
-*.pt
 *.pth
+
+# Model checkpoints (edited model weights)
+checkpoints/
 
 # IDE
 .vscode/
@@ -24,3 +26,6 @@ Thumbs.db
 
 # Runtime
 history.json
+
+# Environment variables (API keys -- KHÔNG commit lên Git!)
+.env

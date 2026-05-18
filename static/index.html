@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Knowledge Editing — EasyEdit + ROME</title>
-  <meta name="description" content="Demo chinh sua tri thuc trong mo hinh ngon ngu lon (GPT-2) bang ROME ma khong can huan luyen lai toan bo." />
+  <title>Knowledge Editing — EasyEdit + ROME + Qwen2.5</title>
+  <meta name="description" content="Demo chỉnh sửa tri thức trong mô hình ngôn ngữ lớn (Qwen2.5-1.5B) bằng ROME mà không cần huấn luyện lại toàn bộ." />
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
@@ -12,11 +12,11 @@
 <!-- HERO -->
 <header class="hero">
   <div class="container">
-    <span class="badge">EasyEdit + ROME</span>
+    <span class="badge">EasyEdit + ROME + Qwen2.5-1.5B</span>
     <h1 class="gradient-text">Knowledge Editing<br>in Large Language Models</h1>
-    <p>Chinh sua tri thuc trong mo hinh ngon ngu lon (GPT-2) ma khong can huan luyen lai toan bo -- su dung phuong phap ROME (Rank-One Model Editing).</p>
+    <p>Chỉnh sửa tri thức trong mô hình ngôn ngữ lớn (<strong>Qwen2.5-1.5B</strong>) mà không cần huấn luyện lại toàn bộ — sử dụng phương pháp <strong>ROME</strong> (Rank-One Model Editing).</p>
     <div class="status-bar" id="statusBar">
-      <span><span class="status-dot amber" id="statusDot"></span> <span id="statusText">Dang kiem tra...</span></span>
+      <span><span class="status-dot amber" id="statusDot"></span> <span id="statusText">Đang kiểm tra...</span></span>
       <span>Edits: <strong id="editCount">0</strong></span>
     </div>
   </div>
@@ -28,13 +28,25 @@
   <section class="card fade-in" id="step1" style="position:relative">
     <div class="card-header">
       <span class="step-num">1</span>
-      <h2>Before Edit -- Kiem tra tri thuc goc</h2>
+      <h2>Before Edit — Kiểm tra tri thức gốc</h2>
     </div>
-    <p class="card-desc">Nhap cau hoi de kiem tra xem GPT-2 goc dang luu tru tri thuc gi. Dieu nay chung minh LLM co the chua <strong>tri thuc loi thoi hoac sai</strong>.</p>
+    <p class="card-desc">Nhập câu hỏi để kiểm tra xem <strong>Qwen2.5-1.5B</strong> đang lưu trữ tri thức gì. Điều này chứng minh LLM có thể chứa <strong>tri thức lỗi thời hoặc sai</strong>.</p>
 
     <div class="form-full">
       <label for="genPrompt">Prompt</label>
-      <input type="text" id="genPrompt" placeholder="Vi du: Thủ đô của Việt Nam là" value="Thủ đô của Việt Nam là" />
+      <input type="text" id="genPrompt" placeholder="Ví dụ: Thủ đô của Việt Nam là" value="Thủ đô của Việt Nam là" />
+    </div>
+    <div class="form-full" style="margin-top:.6rem">
+      <label for="genMaxTokens" style="display:flex;justify-content:space-between">
+        <span>Độ dài câu trả lời (max tokens)</span>
+        <strong id="genMaxTokensVal" style="color:var(--neon-cyan)">20</strong>
+      </label>
+      <input type="range" id="genMaxTokens" min="5" max="60" value="20" step="5"
+             style="width:100%;accent-color:var(--neon-cyan);cursor:pointer"
+             oninput="document.getElementById('genMaxTokensVal').textContent = this.value" />
+      <div style="display:flex;justify-content:space-between;font-size:.75rem;color:var(--text-muted);margin-top:.2rem">
+        <span>5 (rất ngắn)</span><span>20 (mặc định)</span><span>60 (dài)</span>
+      </div>
     </div>
     <div class="btn-group">
       <button class="btn btn-primary" id="btnGenerate" onclick="doGenerate()">
@@ -43,14 +55,29 @@
     </div>
 
     <div id="genResult" class="hidden">
-      <div class="result-label">Ket qua tu GPT-2</div>
+      <div class="result-label">Kết quả từ Qwen2.5-1.5B</div>
       <div class="result-box" id="genOutput"></div>
-      <div class="result-label" style="margin-top:.7rem">Top-5 du doan token tiep theo</div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 dự đoán token tiếp theo</div>
       <div class="prob-bar-container" id="genTopPreds"></div>
+
+      <!-- Tham khảo AI bên ngoài (Gemini / Tavily) -->
+      <div class="ai-ref-panel" id="genAiRefPanel">
+        <div class="ai-ref-header">
+          <span class="ai-ref-icon">🌐</span>
+          <span class="ai-ref-title">Tham khảo thực tế từ AI</span>
+          <button class="btn-ai-ref" id="btnGenExplain" onclick="doExplain('genPrompt','genAiRefAnswer','genAiRefSource','btnGenExplain')">
+            Hỏi Gemini / Tavily
+          </button>
+        </div>
+        <div class="ai-ref-body hidden" id="genAiRefBody">
+          <div class="ai-ref-source" id="genAiRefSource"></div>
+          <div class="ai-ref-answer" id="genAiRefAnswer"></div>
+        </div>
+      </div>
     </div>
 
     <div id="genLoading" class="loading-overlay hidden">
-      <span class="spinner"></span> Dang sinh van ban...
+      <span class="spinner"></span> Đang sinh văn bản...
     </div>
   </section>
 
@@ -58,28 +85,29 @@
   <section class="card fade-in" id="step2" style="position:relative">
     <div class="card-header">
       <span class="step-num">2</span>
-      <h2>Apply ROME -- Chinh sua tri thuc</h2>
+      <h2>Apply ROME — Chỉnh sửa tri thức</h2>
     </div>
-    <p class="card-desc">Nhap thong tin chinh sua. ROME se can thiep <strong>truc tiep vao trong so MLP</strong> cua mo hinh ma khong can retrain.</p>
+    <p class="card-desc">Nhập thông tin chỉnh sửa. ROME sẽ can thiệp <strong>trực tiếp vào trọng số MLP</strong> của mô hình mà không cần retrain.</p>
 
-    <div class="form-row">
-      <div>
-        <label for="editPrompt">Prompt</label>
-        <input type="text" id="editPrompt" value="Thủ đô của Việt Nam là" />
-      </div>
-      <div>
-        <label for="editSubject">Subject</label>
-        <input type="text" id="editSubject" value="Việt Nam" />
-      </div>
+    <div class="form-full">
+      <label for="editPrompt">Prompt</label>
+      <input type="text" id="editPrompt" value="Thủ đô của Việt Nam là" />
     </div>
-    <div class="form-row">
-      <div>
-        <label for="editGroundTruth">Ground Truth (fact cu)</label>
-        <input type="text" id="editGroundTruth" value=" Hà Nội" />
-      </div>
-      <div>
-        <label for="editTargetNew">Target New (fact moi)</label>
-        <input type="text" id="editTargetNew" value=" Hồ Chí Minh" />
+    <div class="form-full">
+      <label for="editSubject">Subject</label>
+      <input type="text" id="editSubject" value="Việt Nam" />
+    </div>
+    <div class="form-full">
+      <label for="editGroundTruth">Ground Truth (fact cũ)</label>
+      <input type="text" id="editGroundTruth" value=" Hà Nội" />
+    </div>
+    <div class="form-full">
+      <label for="editTargetNew">Target New (fact mới muốn dạy)</label>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <input type="text" id="editTargetNew" value=" Hồ Chí Minh" style="flex:1" />
+        <button class="btn btn-secondary" id="btnSuggest" onclick="doSuggest()" title="Gợi ý câu trả lời bằng AI" style="white-space:nowrap;padding:.5rem .9rem;font-size:.82rem">
+          🤖 Gợi ý từ AI
+        </button>
       </div>
     </div>
     <div class="btn-group">
@@ -114,7 +142,7 @@
     </div>
 
     <div id="editLoading" class="loading-overlay hidden">
-      <span class="spinner"></span> Dang ap dung ROME... (co the mat 15-30 giay)
+      <span class="spinner"></span> Đang áp dụng ROME... (có thể mất 15-30 giây)
     </div>
   </section>
 
@@ -122,17 +150,17 @@
   <section class="card fade-in" id="step3" style="position:relative">
     <div class="card-header">
       <span class="step-num">3</span>
-      <h2>Verify Edit -- Hoi lai model da chinh sua</h2>
+      <h2>Verify Edit — Hỏi lại model đã chỉnh sửa</h2>
     </div>
-    <p class="card-desc">Sau khi chinh sua, nhap <strong>bat ky prompt nao</strong> de kiem tra model da cap nhat tri thuc moi chua. Day la cach xac nhan model <strong>sinh ra fact moi dung theo yeu cau</strong>.</p>
+    <p class="card-desc">Sau khi chỉnh sửa, nhập <strong>bất kỳ prompt nào</strong> để kiểm tra model đã cập nhật tri thức mới chưa. Đây là cách xác nhận model <strong>sinh ra fact mới đúng theo yêu cầu</strong>.</p>
 
     <div class="form-full">
-      <label for="verifyPrompt">Prompt (hoi lai)</label>
+      <label for="verifyPrompt">Prompt (hỏi lại)</label>
       <input type="text" id="verifyPrompt" value="Thủ đô của Việt Nam là" />
     </div>
     <div class="form-full">
-      <label for="verifyTarget">Target de do xac suat (tuy chon)</label>
-      <input type="text" id="verifyTarget" placeholder="Vi du:  Hồ Chí Minh" value=" Hồ Chí Minh" />
+      <label for="verifyTarget">Target để đo xác suất (tuỳ chọn)</label>
+      <input type="text" id="verifyTarget" placeholder="Ví dụ:  Hồ Chí Minh" value=" Hồ Chí Minh" />
     </div>
     <div class="btn-group">
       <button class="btn btn-primary" id="btnVerify" onclick="doVerify()">
@@ -141,18 +169,33 @@
     </div>
 
     <div id="verifyResult" class="hidden">
-      <div class="result-label">Ket qua tu model da chinh sua</div>
+      <div class="result-label">Kết quả từ model đã chỉnh sửa</div>
       <div class="result-box success" id="verifyOutput"></div>
-      <div class="result-label" style="margin-top:.7rem">Top-5 du doan token tiep theo</div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 dự đoán token tiếp theo</div>
       <div class="prob-bar-container" id="verifyTopPreds"></div>
       <div id="verifyProbSection" class="hidden">
-        <div class="result-label" style="margin-top:.7rem">Xac suat target tokens</div>
+        <div class="result-label" style="margin-top:.7rem">Xác suất target tokens</div>
         <div class="prob-bar-container" id="verifyProbs"></div>
+      </div>
+
+      <!-- Tham khảo AI bên ngoài -->
+      <div class="ai-ref-panel" id="verifyAiRefPanel">
+        <div class="ai-ref-header">
+          <span class="ai-ref-icon">🌐</span>
+          <span class="ai-ref-title">Cập nhật kiến thức từ AI</span>
+          <button class="btn-ai-ref" id="btnVerifyExplain" onclick="doExplain('verifyPrompt','verifyAiRefAnswer','verifyAiRefSource','btnVerifyExplain')">
+            Hỏi Gemini / Tavily
+          </button>
+        </div>
+        <div class="ai-ref-body hidden" id="verifyAiRefBody">
+          <div class="ai-ref-source" id="verifyAiRefSource"></div>
+          <div class="ai-ref-answer" id="verifyAiRefAnswer"></div>
+        </div>
       </div>
     </div>
 
     <div id="verifyLoading" class="loading-overlay hidden">
-      <span class="spinner"></span> Dang kiem tra...
+      <span class="spinner"></span> Đang kiểm tra...
     </div>
   </section>
 
@@ -160,9 +203,9 @@
   <section class="card fade-in" id="step4">
     <div class="card-header">
       <span class="step-num">4</span>
-      <h2>Metrics -- Danh gia hieu qua</h2>
+      <h2>Metrics — Đánh giá hiệu quả</h2>
     </div>
-    <p class="card-desc">Danh gia hieu qua chinh sua tri thuc bang cac <strong>metric chuan</strong>: Rewrite Accuracy, Token Probability.</p>
+    <p class="card-desc">Đánh giá hiệu quả chỉnh sửa tri thức bằng các <strong>metric chuẩn</strong>: Rewrite Accuracy, Token Probability.</p>
 
     <div class="metrics-grid" id="metricsGrid">
       <div class="metric-card">
@@ -184,13 +227,13 @@
   <section class="card fade-in" id="step5" style="position:relative">
     <div class="card-header">
       <span class="step-num">5</span>
-      <h2>Locality -- Kiem tra tri thuc khong lien quan</h2>
+      <h2>Locality — Kiểm tra tri thức không liên quan</h2>
     </div>
-    <p class="card-desc">Kiem tra rang viec chinh sua <strong>khong lam pha hong</strong> tri thuc khong lien quan. Vi du: edit Messi -> Inter Miami, nhung Ronaldo van phai dung.</p>
+    <p class="card-desc">Kiểm tra rằng việc chỉnh sửa <strong>không làm phá hỏng</strong> tri thức không liên quan. Ví dụ: edit Messi → Inter Miami, nhưng Ronaldo vẫn phải đúng.</p>
 
     <div class="form-row">
       <div>
-        <label for="localPrompt">Prompt (khong lien quan)</label>
+        <label for="localPrompt">Prompt (không liên quan)</label>
         <input type="text" id="localPrompt" value="Tổng thống Hoa Kỳ là" />
       </div>
       <div>
@@ -205,15 +248,15 @@
     </div>
 
     <div id="localResult" class="hidden">
-      <div class="result-label">Ket qua Locality</div>
+      <div class="result-label">Kết quả Locality</div>
       <div class="result-box" id="localOutput"></div>
-      <div class="result-label" style="margin-top:.7rem">Top-5 du doan</div>
+      <div class="result-label" style="margin-top:.7rem">Top-5 dự đoán</div>
       <div class="prob-bar-container" id="localTopPreds"></div>
       <div class="prob-bar-container" id="probsLocality"></div>
     </div>
 
     <div id="localLoading" class="loading-overlay hidden">
-      <span class="spinner"></span> Dang kiem tra locality...
+      <span class="spinner"></span> Đang kiểm tra locality...
     </div>
   </section>
 
@@ -221,12 +264,12 @@
   <section class="card fade-in" id="step6">
     <div class="card-header">
       <span class="step-num">6</span>
-      <h2>Edit History -- Lich su chinh sua</h2>
+      <h2>Edit History — Lịch sử chỉnh sửa</h2>
     </div>
-    <p class="card-desc">Bang lich su tat ca cac lan chinh sua tri thuc da thuc hien trong phien lam viec.</p>
+    <p class="card-desc">Bảng lịch sử tất cả các lần chỉnh sửa tri thức đã thực hiện. Lịch sử được lưu vào <code>history.json</code> và không bị mất khi khởi động lại server.</p>
 
     <div id="historyContent">
-      <p style="color: var(--text-muted); font-size: .88rem;">Chua co lan chinh sua nao.</p>
+      <p style="color: var(--text-muted); font-size: .88rem;">Chưa có lần chỉnh sửa nào.</p>
     </div>
   </section>
 
@@ -234,7 +277,7 @@
 
 <footer class="footer">
   <div class="container">
-    Knowledge Editing in LLMs -- EasyEdit + ROME -- GPT-2 -- 2026
+    Knowledge Editing in LLMs — EasyEdit + ROME — Qwen2.5-1.5B — 2026
   </div>
 </footer>
 
